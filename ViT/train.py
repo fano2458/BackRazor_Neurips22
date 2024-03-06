@@ -47,7 +47,7 @@ def valid(args, model, writer, test_loader, global_step, log, phase="Validation"
             if "resnet" in args.model_type:
                 logits = model(x)
             else:
-                logits = model(x)[0]
+                logits = model(x) # [0]
 
             eval_loss = loss_fct(logits, y)
             eval_losses.update(eval_loss.item())
@@ -316,7 +316,7 @@ def main():
     
     # custom
     parser.add_argument('--layer_drop', action="store_true", help="if employing layer dropping")
-    parser.add_argument('--drop_prod', type=float, default=0.5, help="the layer drop probability")
+    parser.add_argument('--drop_prob', type=float, default=0.5, help="the layer drop probability")
 
     args = parser.parse_args()
 

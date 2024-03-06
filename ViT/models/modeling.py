@@ -46,10 +46,14 @@ class StochasticDepth(nn.Module):
         self._sampler = torch.Tensor(1)
 
     def forward(self, inputs):
+        # print("Type of inputs is ", type(inputs))
         if self.training:
             if self._sampler.uniform_() < self.p:      # Dropping the layer or block
                 return inputs
-            return self.module(inputs) * (1 - self.p)  # Scaling during training
+            else:
+                outputs = self.module(inputs)
+                # print("Type of outputs is ", type(outputs))
+                return outputs * (1 - self.p)  # Scaling during training
         else:
             return self.module(inputs)                 # No scaling during inference
 
@@ -247,7 +251,7 @@ class Block(nn.Module):
     def forward(self, x):
         h = x
         x = self.attention_norm(x)
-        x, weights = self.attn(x)
+        x = self.attn(x) # removed weights
         x = x + h
 
         # print("attn output {}".format(x.mean(-1).mean(-1)))
@@ -259,7 +263,7 @@ class Block(nn.Module):
 
         # print("mlp output {}".format(x.mean(-1).mean(-1)))
 
-        return x, weights
+        return x
 
     def load_from(self, weights, n_block):
         ROOT = f"Transformer/encoderblock_{n_block}"
@@ -274,24 +278,24 @@ class Block(nn.Module):
             value_bias = np2th(weights[pjoin(ROOT, ATTENTION_V, "bias")]).view(-1)
             out_bias = np2th(weights[pjoin(ROOT, ATTENTION_OUT, "bias")]).view(-1)
 
-            self.attn.query.weight.copy_(query_weight)
-            self.attn.key.weight.copy_(key_weight)
-            self.attn.value.weight.copy_(value_weight)
-            self.attn.out.weight.copy_(out_weight)
-            self.attn.query.bias.copy_(query_bias)
-            self.attn.key.bias.copy_(key_bias)
-            self.attn.value.bias.copy_(value_bias)
-            self.attn.out.bias.copy_(out_bias)
+            self.attn.module.query.weight.copy_(query_weight)
+            self.attn.module.key.weight.copy_(key_weight)
+            self.attn.module.value.weight.copy_(value_weight)
+            self.attn.module.out.weight.copy_(out_weight)
+            self.attn.module.query.bias.copy_(query_bias)
+            self.attn.module.key.bias.copy_(key_bias)
+            self.attn.module.value.bias.copy_(value_bias)
+            self.attn.module.out.bias.copy_(out_bias)
 
             mlp_weight_0 = np2th(weights[pjoin(ROOT, FC_0, "kernel")]).t()
             mlp_weight_1 = np2th(weights[pjoin(ROOT, FC_1, "kernel")]).t()
             mlp_bias_0 = np2th(weights[pjoin(ROOT, FC_0, "bias")]).t()
             mlp_bias_1 = np2th(weights[pjoin(ROOT, FC_1, "bias")]).t()
 
-            self.ffn.fc1.weight.copy_(mlp_weight_0)
-            self.ffn.fc2.weight.copy_(mlp_weight_1)
-            self.ffn.fc1.bias.copy_(mlp_bias_0)
-            self.ffn.fc2.bias.copy_(mlp_bias_1)
+            self.ffn.module.fc1.weight.copy_(mlp_weight_0)
+            self.ffn.module.fc2.weight.copy_(mlp_weight_1)
+            self.ffn.module.fc1.bias.copy_(mlp_bias_0)
+            self.ffn.module.fc2.bias.copy_(mlp_bias_1)
 
             self.attention_norm.weight.copy_(np2th(weights[pjoin(ROOT, ATTENTION_NORM, "scale")]))
             self.attention_norm.bias.copy_(np2th(weights[pjoin(ROOT, ATTENTION_NORM, "bias")]))
@@ -313,11 +317,12 @@ class Encoder(nn.Module):
     def forward(self, hidden_states):
         attn_weights = []
         for layer_block in self.layer:
-            hidden_states, weights = layer_block(hidden_states)
+            hidden_states = layer_block(hidden_states) # removed , weights
             if self.vis:
+                weights = None
                 attn_weights.append(weights)
         encoded = self.encoder_norm(hidden_states)
-        return encoded, attn_weights
+        return encoded #, attn_weights
 
 
 class Transformer(nn.Module):
@@ -333,8 +338,8 @@ class Transformer(nn.Module):
         # print("input_ids is {}".format(input_ids.mean(-1).mean(-1)))
         embedding_output = self.embeddings(input_ids)
         # print("self.embeddings output {}".format(embedding_output.mean(-1).mean(-1)))
-        encoded, attn_weights = self.encoder(embedding_output)
-        return encoded, attn_weights
+        encoded = self.encoder(embedding_output) # removed , attn_weights
+        return encoded # , attn_weights
 
 
 class VisionTransformer(nn.Module):
@@ -351,7 +356,7 @@ class VisionTransformer(nn.Module):
         self.head = Linear(config.hidden_size, num_classes)
 
     def forward(self, x, labels=None, return_encoded_feature=False):
-        x, attn_weights = self.transformer(x)
+        x = self.transformer(x) # removed , attn_weights
         if return_encoded_feature:
             return x
 
@@ -362,7 +367,7 @@ class VisionTransformer(nn.Module):
             loss = loss_fct(logits.view(-1, self.num_classes), labels.view(-1))
             return loss
         else:
-            return logits, attn_weights
+            return logits # , attn_weights
 
     def load_from(self, weights):
         with torch.no_grad():
