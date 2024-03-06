@@ -313,6 +313,10 @@ def main():
                                                                           "doing other training augmentations")
     parser.add_argument('--cotuning_trans', action="store_true", help="Employ the trans of cotuning")
     parser.add_argument('--color-distort', action="store_true", help="Employ the color distort")
+    
+    # custom
+    parser.add_argument('--layer_drop', action="store_true", help="if employing layer dropping")
+    parser.add_argument('--drop_prod', type=float, default=0.5, help="the layer drop probability")
 
     args = parser.parse_args()
 

@@ -36,6 +36,24 @@ ATTENTION_NORM = "LayerNorm_0"
 MLP_NORM = "LayerNorm_2"
 
 
+class StochasticDepth(nn.Module):
+    def __init__(self, module: torch.nn.Module, p: float = 0.5):
+        super().__init__()
+        if not 0 < p < 1:
+            raise ValueError("Stochastic Depth p has to be between 0 and 1 but got {}".format(p))
+        self.module: nn.Module = module
+        self.p: float = p
+        self._sampler = torch.Tensor(1)
+
+    def forward(self, inputs):
+        if self.training:
+            if self._sampler.uniform_() < self.p:      # Dropping the layer or block
+                return inputs
+            return self.module(inputs) * (1 - self.p)  # Scaling during training
+        else:
+            return self.module(inputs)                 # No scaling during inference
+
+
 def np2th(weights, conv=False):
     """Possibly convert HWIO to OIHW."""
     if conv:
@@ -198,11 +216,12 @@ class Embeddings(nn.Module):
 
 class Block(nn.Module):
     def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1,
-                 masker=None, new_backrazor=False):
+                 masker=None, new_backrazor=False, layer_drop=False, drop_prob=0.5):
         super(Block, self).__init__()
         self.hidden_size = config.hidden_size
 
         self.new_backrazor = new_backrazor
+        self.layer_drop = layer_drop
 
         if new_backrazor:
             self.attention_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
@@ -211,12 +230,16 @@ class Block(nn.Module):
             self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
             self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
 
-        if new_backrazor:
+        if new_backrazor and layer_drop:
+            self.ffn = StochasticDepth(MlpActPrune(config, masker), p=drop_prob)
+        elif new_backrazor:
             self.ffn = MlpActPrune(config, masker)
         else:
             self.ffn = Mlp(config)
 
-        if new_backrazor:
+        if new_backrazor and layer_drop:
+            self.attn = StochasticDepth(AttentionActPrune(config, vis, masker), p=drop_prob)
+        elif new_backrazor:
             self.attn = AttentionActPrune(config, vis, masker)
         else:
             self.attn = Attention(config, vis, prune_mode, prune_after_softmax, n_tokens)

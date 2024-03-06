@@ -45,7 +45,8 @@ def setup(args, log, num_classes):
         masker = None if not args.new_backrazor else Masker(prune_ratio=args.back_prune_ratio)
 
         model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,
-                                  masker=masker, quantize=args.quantize, new_backrazor=args.new_backrazor)
+                                  masker=masker, quantize=args.quantize, new_backrazor=args.new_backrazor, 
+                                  layer_drop=args.layer_drop, drop_prob=args.drop_prob)
         model.load_from(np.load(args.pretrained_dir))
         log.info("{}".format(config))
     else:
