@@ -15,7 +15,7 @@ class linear(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, weight, bias=None, mask=None, quantize=True, half=False, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
         shape_x, mask_x, sparse_x = sparsify(x, mask, with_batch_size=False)
-
+        #print("forward with pruning")
         if half and (not quantize):
             sparse_x = sparse_x.half()
 
@@ -79,6 +79,7 @@ class LinearSparse(nn.Linear, custom_quant.Quant):
                              self.iteration, self.ema_decay, self.quant_groups, self.shift)
         else:
             y = F.linear(x, self.weight, self.bias)
+            #print("forward without pruning")
         return y
 
 

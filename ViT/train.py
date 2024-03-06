@@ -7,6 +7,8 @@ import argparse
 
 from datetime import timedelta
 
+from  torch.cuda.amp import autocast
+
 import torch
 import torch.distributed as dist
 
@@ -17,11 +19,12 @@ from ViT.utils.data_utils import get_loader
 from ViT.utils.utils import *
 from ViT.utils.memory_cost_profiler import profile_memory_cost
 
-
 import time
 import mesa as ms
 
 from torch import nn
+
+import matplotlib.pyplot as plt
 
 
 def valid(args, model, writer, test_loader, global_step, log, phase="Validation"):
@@ -135,6 +138,9 @@ def train(args, model, train_loader, val_loader, test_loader, log, writer):
     losses = AverageMeter()
     global_step = 0
 
+    train_losses = []
+    test_accuracies = []
+
     epoch = 0
     accuracy = -1
     while True:
@@ -144,6 +150,7 @@ def train(args, model, train_loader, val_loader, test_loader, log, writer):
 
         model.train()
         end = time.time()
+        begin_epoch_time = time.time()
         for step, batch in enumerate(train_loader):
             data_time.update(time.time() - end)
             batch = tuple(t.to(args.device) for t in batch)
@@ -178,7 +185,6 @@ def train(args, model, train_loader, val_loader, test_loader, log, writer):
                 optimizer.step()
                 optimizer.zero_grad()
                 global_step += 1
-
                 if global_step % 50 == 0:
                     log.info("Training ({}/{} Steps)\t(loss={:2.5f})\tData time={:.2f}({:.2f})\tBatch time={:.2f}({:.2f})\tMemory={:.1f}({:.1f})".format(
                         global_step, t_total, losses.val, data_time.val, data_time.avg, batch_time.val, batch_time.avg, memory_meter.val, memory_meter.avg))
@@ -187,6 +193,8 @@ def train(args, model, train_loader, val_loader, test_loader, log, writer):
                     writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
                 if global_step % args.eval_every == 0:
                     accuracy = valid(args, model, writer, val_loader, global_step, log)
+                    train_losses.append(losses.val)
+                    test_accuracies.append(accuracy)
                 if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
                     save_model(args, model, log)
                     model.train()
@@ -194,9 +202,31 @@ def train(args, model, train_loader, val_loader, test_loader, log, writer):
 
                 if global_step % t_total == 0:
                     break
+
+        log.info(f"Epoch {epoch} training time is {time.time()-begin_epoch_time}")
+
         losses.reset()
         if global_step % t_total == 0:
             break
+
+    
+   
+    plt.figure(figsize=(10,5))
+    plt.title(f"Training loss")
+    plt.plot(train_losses, label="loss")
+    plt.xlabel("Steps")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.show()
+    
+    plt.figure(figsize=(10,5))
+    plt.title(f"Testing Accuracy")
+    plt.plot(test_accuracies, label="accuracy")
+    plt.xlabel("Steps")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.show()
+    
 
     log.info("Final Accuracy: \t{}".format(accuracy))
     log.info("End Training!")
@@ -217,7 +247,8 @@ def main():
     parser.add_argument("--customSplit", default="", help="the downstream custom split.")
 
     parser.add_argument("--model_type", choices=["ViT-B_16", "ViT-B_32", "ViT-L_16",
-                                                 "ViT-L_32", "ViT-H_14", "R50-ViT-B_16"],
+                                                 "ViT-L_32", "ViT-H_14", "R50-ViT-B_16",
+                                                 "ViT-Ti_16"],
                         default="ViT-B_16",
                         help="Which variant to use.")
     parser.add_argument("--pretrained_dir", type=str, default="checkpoint/ViT-B_16.npz",
@@ -360,7 +391,11 @@ def main():
              format(args.dataset, len(train_loader.dataset), len(val_loader.dataset)))
     # Training
     # Prepare dataset
+    begin_train_time = time.time()
     train(args, model, train_loader, val_loader, test_loader, log, writer)
+    total_train_time = time.time() - begin_train_time
+    
+    log.info("Total training time took {}".format(total_train_time))
 
 
 if __name__ == "__main__":
