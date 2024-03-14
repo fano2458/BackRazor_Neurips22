@@ -241,9 +241,9 @@ class Block(nn.Module):
         else:
             self.ffn = Mlp(config)
 
-        if new_backrazor and layer_drop:
-            self.attn = StochasticDepth(AttentionActPrune(config, vis, masker), p=drop_prob)
-        elif new_backrazor:
+        # if new_backrazor and layer_drop:
+        #     self.attn = StochasticDepth(AttentionActPrune(config, vis, masker), p=drop_prob)
+        if new_backrazor:
             self.attn = AttentionActPrune(config, vis, masker)
         else:
             self.attn = Attention(config, vis, prune_mode, prune_after_softmax, n_tokens)
